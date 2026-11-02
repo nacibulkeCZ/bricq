@@ -5,3 +5,4 @@ firmware/requirements.txt text eol=lf
 *.service text eol=lf
 *.timer text eol=lf
 *.ps1 text eol=crlf
+firmware/bricq-wifi text eol=lf
