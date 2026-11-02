@@ -1,2 +1,19 @@
 #!/bin/sh
+if [ "${1:-}" = wifi ]; then
+    shift
+    if [ ! -x /usr/local/sbin/bricq-wifi ]; then
+        echo 'Install the BRICQ USB Wi-Fi management helper first.' >&2
+        exit 1
+    fi
+    if [ "$#" -eq 0 ]; then
+        exec sudo -n /usr/local/sbin/bricq-wifi --interactive
+    elif [ "$#" -eq 1 ]; then
+        case "$1" in
+            off) exec sudo -n /usr/local/sbin/bricq-wifi --off ;;
+            on) exec sudo -n /usr/local/sbin/bricq-wifi --on ;;
+        esac
+    fi
+    echo 'Usage: bricq wifi [on|off]' >&2
+    exit 2
+fi
 exec /usr/bin/python3 -I /usr/local/lib/bricq/manager.py "$@"

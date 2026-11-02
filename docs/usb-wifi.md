@@ -1,48 +1,70 @@
-# Wi-Fi setup over USB
+# BRICQ Wi-Fi over USB
 
-The Pi Zero W uses Raspberry Pi OS Trixie and the official rpi-usb-gadget package.
-USB networking is already enabled. Connect a data cable to the USB port nearest HDMI.
-Windows needs the official Raspberry Pi RNDIS driver once per computer.
+See [system requirements and USB driver installation](requirements.md) before setup.
 
-## Install the Wi-Fi helper once
+Connect the Pi's USB data port to a computer with the Raspberry Pi RNDIS driver and
+an authorized BRICQ SSH key. Run these commands in **Windows PowerShell**:
 
-From the project folder in Windows PowerShell:
+| Command | Action |
+|---|---|
+| bricq wifi | Confirm and share the laptop's current saved Wi-Fi network with the Pi. |
+| bricq wifi off | Turn off the Pi's Wi-Fi radio; keep USB and saved profiles. |
+| bricq wifi manual | Enter a Wi-Fi name/password manually through the SSH terminal. |
+| bricq status | Show Pi status through USB. |
+| bricq login | Open the Pi's shell through USB. |
+
+Inside the Pi's SSH shell, bricq wifi off also turns Wi-Fi off; bricq wifi on
+enables the radio and allows reconnection to saved networks. Plain bricq wifi
+on the Pi asks for a network name and, if necessary, its password. Automatic
+laptop-password sharing runs on Windows because the key is stored there.
+The Pi launcher and helper require this installer update; bricq update alone
+does not replace installed management tools.
+
+Automatic setup detects the current network through the Windows WLAN API. After confirmation,
+it checks whether the Pi is already connected. If needed, Windows retrieves the saved key
+and sends a derived WPA key over encrypted SSH stdin, without a terminal that could echo it.
+Secrets are not written to Windows files, passed as arguments, printed, or stored in Git.
+The Pi saves the key in a root-only NetworkManager profile for automatic reconnection.
+
+Windows may require an Administrator PowerShell to read the saved password. It may also
+restrict Wi-Fi detection through its privacy settings. The helper reports those restrictions;
+it does not change them. SSH can still ask for your key's passphrase.
+Automatic sharing currently supports WPA/WPA2 Personal, with a UTF-8 SSID and a 2.4 GHz
+network available to the Zero W. Enterprise, WPA3-only, open-network enrollment and
+captive-portal login are outside this initial flow.
+
+Joining a different network changes only wlan0. The USB link remains available, and the
+helper attempts to restore the previous Wi-Fi profile on failure. Turning Wi-Fi off does
+not affect the laptop's Wi-Fi. Run bricq wifi to turn the Pi radio on and reconnect.
+
+## Install or upgrade
+
+From the repository in Windows PowerShell:
 
     .\tools\install-usb-wifi.ps1
 
-This uses the existing administrator account to install a root-owned helper and grant
-the bricq account permission to run that helper only. It does not grant unrestricted
-sudo, change USB networking, join Wi-Fi, or restart the robot.
-The account's existing SSH authorization is still required.
+The owner account installs the root-owned Pi helper and its restricted sudo rule.
+The installer also registers the Windows command in the current user's PATH.
+For a new computer, first authorize its SSH key, then run:
 
-## Join the laptop's Wi-Fi
+    .\tools\install-windows-command.ps1
 
-    .\tools\connect-usb-wifi.ps1
+Restart other terminal applications if they do not yet see the new command.
+The Windows command uses USB address 10.12.194.1 (official gadget shared mode).
+It does not require the Pi to be connected to Wi-Fi.
 
-The script detects the laptop's SSID, connects to BRICQ over USB, and asks for confirmation.
-If Windows cannot provide the SSID, enter it manually, or use:
-
-    .\tools\connect-usb-wifi.ps1 -Ssid 'My Wi-Fi'
-
-Enter the Wi-Fi password at the Pi's prompt if requested. It is hidden and never passed
-as a command argument or saved in this repository. NetworkManager stores the profile
-on the Pi so it can reconnect later. Previously saved credentials may avoid a password prompt.
-
-Only wlan0 is changed. USB access remains available if joining fails; the helper attempts
-to restore the previously active Wi-Fi profile. The Zero W needs 2.4 GHz Wi-Fi.
-Enterprise networks and captive-portal login are outside this helper's initial scope.
-Connecting to Wi-Fi does not by itself guarantee internet access.
-
-The default USB Pi address is 10.12.194.1. If Internet Connection Sharing changes it,
-pass the actual USB address using -UsbAddress. No administrator account is needed for
-everyday use after installation: the helper connects as bricq with the computer's SSH key.
+## Files
 
 | File | Purpose |
 |---|---|
-| tools/connect-usb-wifi.ps1 | Detect SSID and launch the interactive setup over USB. |
-| tools/install-usb-wifi.ps1 | Upload and install the helper using the owner account. |
-| firmware/usb-wifi.py | Confirm the network and manage Wi-Fi through NetworkManager. |
+| tools/bricq.cmd | Short Windows command launcher. |
+| tools/bricq-cli.ps1 | Dispatch commands and send Wi-Fi credentials through SSH. |
+| tools/WindowsWifi.cs | Read the current Windows Wi-Fi profile using native APIs. |
+| tools/install-windows-command.ps1 | Install the launcher for this Windows user. |
+| tools/connect-usb-wifi.ps1 | Manual Wi-Fi setup fallback. |
+| tools/install-usb-wifi.ps1 | Install/upgrade both sides, preserving recognized old files. |
+| firmware/usb-wifi.py | Manage Pi Wi-Fi, saved profiles, status and disconnect. |
 | firmware/bricq-wifi | Launch the Python helper in isolated mode. |
-| firmware/install-usb-wifi.sh | Install helper files and the narrow sudo permission. |
+| firmware/install-usb-wifi.sh | Install the Pi helper and narrowly scoped sudo permission. |
 
-These management files are installed separately from ordinary application updates.
+These management files are maintained separately from automatic application updates.
