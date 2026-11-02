@@ -1,0 +1,11 @@
+[Unit]
+Description=Check BRICQ firmware every two minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+RandomizedDelaySec=15
+Unit=bricq-watch.service
+
+[Install]
+WantedBy=timers.target

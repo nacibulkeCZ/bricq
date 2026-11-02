@@ -1,0 +1,12 @@
+[Unit]
+Description=Check GitHub for BRICQ firmware updates
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=bricq
+Group=bricq
+Environment=HOME=/home/bricq
+ExecStart=/usr/local/bin/bricq update
+TimeoutStartSec=30min

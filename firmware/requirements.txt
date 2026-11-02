@@ -1,0 +1,2 @@
+# The initial status-only application uses Python's standard library.
+# Add pinned runtime dependencies here when implementing hardware control.

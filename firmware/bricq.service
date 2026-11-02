@@ -1,0 +1,22 @@
+[Unit]
+Description=BRICQ robot software
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=bricq
+Group=bricq
+Environment=HOME=/home/bricq
+ExecStart=/usr/local/bin/bricq serve
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateDevices=true
+
+[Install]
+WantedBy=multi-user.target
