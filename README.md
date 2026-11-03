@@ -1,4 +1,4 @@
-# BRICG
+# BRICQ
 
 ## BRICQ software
 

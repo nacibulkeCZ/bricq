@@ -16,7 +16,7 @@ import time
 import urllib.request
 
 ROOT = Path.home() / '.local/share/bricq'
-REPO = 'https://github.com/nacibulkeCZ/bricg.git'
+REPO = 'https://github.com/nacibulkeCZ/bricq.git'
 BRANCH = 'main'
 SYSTEMCTL = shutil.which('systemctl') or '/usr/bin/systemctl'
 
