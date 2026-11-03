@@ -14,7 +14,7 @@ Automatic checks are optional and initially disabled. The Pi only needs internet
 
 ## Everyday commands
 
-From Windows PowerShell, connect with `ssh bricq`. Then run these commands on the Pi:
+**On the Pi** (after `ssh bricq`):
 
 | Command | Purpose |
 |---|---|
@@ -24,6 +24,16 @@ From Windows PowerShell, connect with `ssh bricq`. Then run these commands on th
 | `bricq rollback` | Restore the previous release. |
 | `bricq watch` | Enable background update checks roughly every two minutes. |
 | `bricq watch stop` | Disable future checks; an ongoing update may finish. |
+| `bricq install-local <path>` | Install from a local tarball or directory (used internally by `bricq push`). |
+
+**On Windows** (run from any shell with the `bricq` command installed):
+
+| Command | Purpose |
+|---|---|
+| `bricq push` | Package your current working tree and install it on the Pi. USB first, falls back to Wi-Fi. |
+| `bricq status`, `bricq login`, `bricq wifi` | Current USB-only operations. |
+
+`bricq push` is for the edit-and-test dev loop: when you've changed firmware locally and want to try it on the Pi without going through a Git push + `bricq update`. The same release/health-check/auto-rollback pipeline as `bricq update` runs on the Pi — a push that fails to come up healthy rolls back automatically.
 
 Alternatively, run `./tools/deploy.ps1` from Windows to request an update over SSH.
 
@@ -44,6 +54,9 @@ Alternatively, run `./tools/deploy.ps1` from Windows to request an update over S
 | `tools/bootstrap.ps1` | Coordinates initial installation from Windows. |
 | `tools/backup-tests.py` | Archives old Pi scripts without running them. |
 | `tools/deploy.ps1` | Runs `bricq update` through SSH. |
+| `tools/bricq-push.ps1` | Packages the local `firmware/` tree and installs it on the Pi over USB or Wi-Fi. |
+| `firmware/tests/` | pytest suite for `manager.py`. Run from repo root with `pytest`. |
+| `tools/tests/` | Pester suite for Windows tools. Run from PowerShell with `Invoke-Pester -Path .\tools\tests`. |
 | `.gitignore` | Excludes local backups, environments, caches, and common credential files. |
 | `.gitattributes` | Keeps Windows/Linux file line endings compatible. |
 

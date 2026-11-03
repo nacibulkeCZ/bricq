@@ -191,19 +191,28 @@ def update():
         print('Application updated. Installer, management commands and system services are maintained separately.')
 
 
-def install_local(folder):
+def install_local(path):
     with locked():
-        if current():
-            raise RuntimeError('Already installed; use update or rollback.')
-        source = Path(folder).resolve()
-        validate(source)
-        digest = hashlib.sha256()
-        for path in sorted(source.rglob('*')):
-            if path.is_file():
-                digest.update(str(path.relative_to(source)).encode())
-                digest.update(path.read_bytes())
-        version = 'local-' + digest.hexdigest()[:12]
-        activate(prepare(source, version, version))
+        source_arg = Path(path).resolve()
+        if source_arg.is_file():
+            data = source_arg.read_bytes()
+            with tempfile.TemporaryDirectory(dir=ROOT) as workspace:
+                source = Path(workspace)
+                extract_firmware(data, source)
+                _install_tree(source)
+        else:
+            _install_tree(source_arg)
+
+
+def _install_tree(source):
+    validate(source)
+    digest = hashlib.sha256()
+    for path in sorted(source.rglob('*')):
+        if path.is_file():
+            digest.update(str(path.relative_to(source)).encode())
+            digest.update(path.read_bytes())
+    version = 'local-' + digest.hexdigest()[:12]
+    activate(prepare(source, version, version))
 
 
 def status():

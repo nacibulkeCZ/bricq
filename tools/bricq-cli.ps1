@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('wifi','status','login')][string]$Command = 'status',
+    [ValidateSet('wifi','status','login','push')][string]$Command = 'status',
     [ValidateSet('on','off','manual')][string]$Action = 'on'
 )
 $ErrorActionPreference = 'Stop'
@@ -8,6 +8,12 @@ $usb = '10.12.194.1'
 try {
     if ($Command -eq 'login') { & ssh -o "HostName=$usb" bricq; exit $LASTEXITCODE }
     if ($Command -eq 'status') { & ssh -o "HostName=$usb" bricq 'bricq status'; exit $LASTEXITCODE }
+    if ($Command -eq 'push') {
+        . "$PSScriptRoot\bricq-push.ps1"
+        $repoRoot = (Get-Item $PSScriptRoot).Parent.FullName
+        Invoke-BricqPush -UsbAddress $usb -RepoRoot $repoRoot
+        exit 0
+    }
     if ($Action -eq 'off') {
         & ssh -o "HostName=$usb" -o ConnectTimeout=10 bricq 'sudo -n /usr/local/sbin/bricq-wifi --off'
         exit $LASTEXITCODE
