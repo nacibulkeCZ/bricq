@@ -25,6 +25,7 @@ Automatic checks are optional and initially disabled. The Pi only needs internet
 | `bricq watch` | Enable background update checks roughly every two minutes. |
 | `bricq watch stop` | Disable future checks; an ongoing update may finish. |
 | `bricq install-local <path>` | Install from a local tarball or directory (used internally by `bricq push`). |
+| `bricq legtest <leg>` | Start the leg-test web UI for one leg (e.g. `bricq legtest front-right`). |
 
 **On Windows** (run from any shell with the `bricq` command installed):
 
@@ -37,14 +38,35 @@ Automatic checks are optional and initially disabled. The Pi only needs internet
 
 Alternatively, run `./tools/deploy.ps1` from Windows to request an update over SSH.
 
+## Modes
+
+A **mode** is a hardware-driving feature (first one: `legtest`). Only one mode runs at a time. Starting a mode stops `bricq.service` so `/health` honestly reports "not available" and other operations (updates, pushes) refuse while the hardware is live. Exiting the mode (Ctrl+C) restarts `bricq.service` automatically.
+
+| Mode | Command | What it does |
+|---|---|---|
+| `legtest` | `bricq legtest <leg>` | Flask UI on port 5000 for one leg at a time. Browser URL: `http://bricq.local:5000` (Wi-Fi) or `http://10.12.194.1:5000` (USB). |
+
+Valid leg names: `front-left`, `front-right`, `back-left`, `back-right`. Only legs with channels defined in [firmware/hardware.py](../firmware/hardware.py) `LEGS` are usable; unwired legs error with a clear message.
+
+**Adding a new mode** (future `cameratest`, `walktest`, etc.):
+
+1. Add any new hardware config to `firmware/hardware.py` (pins, calibration constants).
+2. Add deps to `firmware/requirements.txt`.
+3. Write tests in `firmware/tests/test_mode_<name>.py` using the `FakeServoBus` fixture pattern.
+4. Create `firmware/modes/<name>.py` exposing `main(arg)` that blocks on SIGINT.
+5. Add the mode name to `manager.py`'s argparse `choices` and dispatch to `run_mode('<name>', arg)`.
+6. `bricq push` to try it on real hardware.
+
 ## File guide
 
 | File | Role |
 |---|---|
-| `firmware/app.py` | Application entry point; currently serves local health/status on port 8765. |
-| `firmware/manager.py` | Handles commands, releases, updates, health checks, and rollback. |
+| `firmware/app.py` | Status-only application; serves `/health` on port 8765 when no mode is running. |
+| `firmware/manager.py` | Handles commands, releases, updates, health checks, rollback, and mode dispatch. |
+| `firmware/hardware.py` | Single source of truth for leg wiring (`LEGS`) and the `ServoBus` abstraction. |
+| `firmware/modes/legtest.py` | Leg test mode: Flask UI + servo driver for one leg at a time. |
 | `firmware/bricq` | Small Linux launcher that passes your command to the manager. |
-| `firmware/requirements.txt` | Application dependencies; currently no external libraries. |
+| `firmware/requirements.txt` | Runtime Python dependencies for the per-release venv. |
 | `firmware/login.sh` | Login banner, status display, and terminal prompt. |
 | `firmware/install.sh` | Creates the Pi account and installs the management files and services. |
 | `firmware/bricq.service` | Starts the application at boot and restarts it after a crash. |

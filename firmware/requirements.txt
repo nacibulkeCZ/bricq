@@ -1,2 +1,6 @@
-# The initial status-only application uses Python's standard library.
-# Add pinned runtime dependencies here when implementing hardware control.
+# Runtime dependencies for the Pi. Installed into the per-release venv by
+# manager.prepare(). Add new deps here; the next `bricq update`/`bricq push`
+# will pick them up on install.
+
+Flask>=3,<4
+adafruit-circuitpython-servokit>=1.3

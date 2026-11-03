@@ -41,6 +41,13 @@ def tmp_root(tmp_path, monkeypatch):
 
     monkeypatch.setattr(manager, 'point', fake_point)
     monkeypatch.setattr(manager, 'current', fake_current)
+
+    def fake_link_venv(release_dir, venv_dir):
+        link = Path(release_dir) / 'venv'
+        link.mkdir(parents=True, exist_ok=True)
+        (link / '_resolved').write_text(str(venv_dir))
+
+    monkeypatch.setattr(manager, '_link_venv', fake_link_venv)
     return root
 
 

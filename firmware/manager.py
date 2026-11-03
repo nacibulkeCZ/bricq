@@ -151,6 +151,40 @@ def activate(release):
     print('BRICQ running:', metadata(release)['version'])
 
 
+def _requirements_entries(requirements_file):
+    return [
+        line.strip() for line in requirements_file.read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith('#')
+    ]
+
+
+def ensure_venv(requirements_file):
+    """Return path to a ready, content-addressed venv matching this requirements file.
+
+    Reuses the venv across releases when requirements.txt is unchanged, so
+    `bricq push` doesn't pay the pip-install cost on every iteration. Interrupted
+    installs are detected via a missing `.ready` marker and get rebuilt."""
+    entries = _requirements_entries(requirements_file)
+    digest = hashlib.sha256('\n'.join(sorted(entries)).encode()).hexdigest()[:16]
+    venv_root = ROOT / 'venvs' / digest
+    marker = venv_root / '.ready'
+    if marker.exists():
+        return venv_root
+    if venv_root.exists():
+        shutil.rmtree(venv_root)
+    venv_root.parent.mkdir(parents=True, exist_ok=True)
+    venv_root.mkdir()
+    run(sys.executable, '-m', 'venv', str(venv_root))
+    if entries:
+        run(str(venv_root / 'bin/python'), '-m', 'pip', 'install', '-r', str(requirements_file), timeout=1500)
+    marker.write_text('\n'.join(sorted(entries)) + '\n')
+    return venv_root
+
+
+def _link_venv(release_dir, venv_dir):
+    (release_dir / 'venv').symlink_to(venv_dir, target_is_directory=True)
+
+
 def prepare(source, version, tree):
     validate(source)
     releases = ROOT / 'releases'
@@ -158,12 +192,9 @@ def prepare(source, version, tree):
     stage = Path(tempfile.mkdtemp(prefix='release-', dir=releases))
     try:
         shutil.copytree(source, stage / 'firmware')
-        run(sys.executable, '-m', 'venv', str(stage / 'venv'))
-        requirements = stage / 'firmware/requirements.txt'
-        if any(line.strip() and not line.lstrip().startswith('#') for line in requirements.read_text().splitlines()):
-            run(str(stage / 'venv/bin/python'), '-m', 'pip', 'install', '-r', str(requirements), timeout=1500)
+        venv_dir = ensure_venv(stage / 'firmware' / 'requirements.txt')
+        _link_venv(stage, venv_dir)
         (stage / 'version.json').write_text(json.dumps({'version': version, 'tree': tree}) + '\n')
-        # Keep this path stable: virtual environments contain absolute paths.
         return stage
     except Exception:
         shutil.rmtree(stage)
@@ -240,11 +271,30 @@ def serve():
     os.execve(python, [python, '-u', str(release / 'firmware/app.py')], env)
 
 
-def main():
+def run_mode(mode_name, mode_arg):
+    release = current()
+    if not release:
+        raise RuntimeError('No installed release. Install firmware first.')
+    was_active = active()
+    if was_active:
+        control('stop', 'bricq.service')
+    try:
+        python = str(release / 'venv/bin/python')
+        script = release / 'firmware' / 'modes' / (mode_name + '.py')
+        completed = subprocess.run([python, '-u', str(script), mode_arg])
+        if completed.returncode != 0:
+            raise RuntimeError('%s exited with code %d' % (mode_name, completed.returncode))
+    finally:
+        if was_active:
+            reset_failed()
+            control('restart', 'bricq.service')
+
+
+def main_with_args(argv):
     parser = argparse.ArgumentParser(description='BRICQ robot console')
-    parser.add_argument('command', choices=['status', 'update', 'rollback', 'watch', 'logs', 'serve', 'install-local'])
+    parser.add_argument('command', choices=['status', 'update', 'rollback', 'watch', 'logs', 'serve', 'install-local', 'legtest'])
     parser.add_argument('argument', nargs='?')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.command == 'status':
         status()
     elif args.command == 'update':
@@ -264,10 +314,18 @@ def main():
         run('sudo', '-n', shutil.which('journalctl') or '/usr/bin/journalctl', '-u', 'bricq.service', '-n', '80', '--no-pager')
     elif args.command == 'serve':
         serve()
+    elif args.command == 'legtest':
+        if not args.argument:
+            parser.error('legtest requires a leg name. Available: front-left, front-right, back-left, back-right')
+        run_mode('legtest', args.argument)
     else:
         if not args.argument:
             parser.error('install-local requires a firmware directory.')
         install_local(args.argument)
+
+
+def main():
+    main_with_args(sys.argv[1:])
 
 
 if __name__ == '__main__':
