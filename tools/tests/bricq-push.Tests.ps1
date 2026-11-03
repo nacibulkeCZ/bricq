@@ -55,6 +55,32 @@ Describe 'Invoke-BricqPush' {
             }
         }
 
+        It 'removes the uploaded tarball from the Pi after a successful install' {
+            Invoke-BricqPush -UsbAddress '10.12.194.1' -RepoRoot $fakeRepo
+            Should -Invoke -CommandName Invoke-Ssh -Times 1 -ParameterFilter {
+                ($Arguments -join ' ') -match 'install-local .*&& rm -f /tmp/bricq-push-'
+            }
+        }
+
+        It 'keeps the remote tarball when install-local fails, and reports it' {
+            Mock -CommandName Invoke-Ssh -ParameterFilter {
+                ($Arguments -join ' ') -match 'install-local'
+            } -MockWith { 1 }
+            { Invoke-BricqPush -UsbAddress '10.12.194.1' -RepoRoot $fakeRepo } |
+                Should -Throw -ExpectedMessage '*Tarball kept at /tmp/bricq-push-*'
+        }
+
+        It 'pins every ssh and scp call to IPv4 to avoid broken IPv6 routes' {
+            Invoke-BricqPush -UsbAddress '10.12.194.1' -RepoRoot $fakeRepo
+            Should -Invoke -CommandName Invoke-Scp -Times 1 -ParameterFilter {
+                ($Arguments -join ' ') -match 'AddressFamily=inet'
+            }
+            Should -Invoke -CommandName Invoke-Ssh -Times 1 -ParameterFilter {
+                ($Arguments -join ' ') -match 'install-local' -and
+                ($Arguments -join ' ') -match 'AddressFamily=inet'
+            }
+        }
+
         It 'aborts the push if tar fails' {
             Mock -CommandName Invoke-Tar -MockWith { 1 }
             { Invoke-BricqPush -UsbAddress '10.12.194.1' -RepoRoot $fakeRepo } | Should -Throw

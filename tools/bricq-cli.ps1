@@ -10,7 +10,12 @@ try {
     if ($Command -eq 'status') { & ssh -o "HostName=$usb" bricq 'bricq status'; exit $LASTEXITCODE }
     if ($Command -eq 'push') {
         . "$PSScriptRoot\bricq-push.ps1"
-        $repoRoot = (Get-Item $PSScriptRoot).Parent.FullName
+        $marker = Join-Path (Split-Path -Parent $PSScriptRoot) 'repo-root.txt'
+        if (Test-Path -LiteralPath $marker) {
+            $repoRoot = (Get-Content -LiteralPath $marker -Raw).Trim()
+        } else {
+            $repoRoot = (Get-Item $PSScriptRoot).Parent.FullName
+        }
         Invoke-BricqPush -UsbAddress $usb -RepoRoot $repoRoot
         exit 0
     }
