@@ -1,11 +1,11 @@
 # BRICQ
 
-## BRICQ software
+Design and development of a compact, throwable mobile reconnaissance robot with a protective rugby-ball-shaped shell, four-legged locomotion, wireless control, and live video streaming. Built as my maturita project using Raspberry Pi, custom mechanics, and 3D-printed parts.
 
 See [BRICQ startup firmware](docs/startup-firmware-documentation.md) for the mandatory ssh bricq login,
 Windows/VS Code workflow, Pi installation, updates, rollback, and USB Wi-Fi roadmap.
-Application code is in firmware/; local test backups are ignored under local-tests/.
-Design and development of a compact, throwable mobile reconnaissance robot with a protective rugby-ball-shaped shell, four-legged locomotion, wireless control, and live video streaming. Built as my maturita project using Raspberry Pi, custom mechanics, and 3D-printed parts.
+
+Application code is in firmware/;
 
 ## Project Planning 
 Most of the planning, research, references and current design ideas are kept on my public Milanote board:
