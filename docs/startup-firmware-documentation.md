@@ -72,7 +72,7 @@ Valid leg names: `front-left`, `front-right`, `back-left`, `back-right`. Only le
 | `firmware/bricq.service` | Starts the application at boot and restarts it after a crash. |
 | `firmware/bricq-watch.service` | Runs one update check. |
 | `firmware/bricq-watch.timer` | Schedules update checks when enabled. |
-| `tools/setup-windows.ps1` | Creates the computer's SSH key and mandatory `bricq` alias. |
+| `tools/setup-windows.ps1` | Creates the computer's SSH key and mandatory `bricq` alias; enables ssh-agent and caches the passphrase so every subsequent command runs silently. |
 | `tools/bootstrap.ps1` | Coordinates initial installation from Windows. |
 | `tools/backup-tests.py` | Archives old Pi scripts without running them. |
 | `tools/deploy.ps1` | Runs `bricq update` through SSH. |

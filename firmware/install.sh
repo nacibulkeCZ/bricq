@@ -44,6 +44,14 @@ else
     printf '\n. /usr/local/lib/bricq/login.sh\n' >> /home/bricq/.profile
     chown bricq:bricq /home/bricq/.profile
 fi
+# Hardware peripheral access: /dev/i2c-* for the PCA9685 servo controller,
+# /dev/gpiomem for rpi_ws281x and future GPIO-driven peripherals. usermod -aG
+# is idempotent, so running this on resume or a pre-existing install is safe.
+for group in i2c gpio; do
+    if getent group "$group" >/dev/null; then
+        usermod -aG "$group" bricq
+    fi
+done
 install -d -m 755 /usr/local/lib/bricq
 install -m 644 "$src/manager.py" /usr/local/lib/bricq/manager.py
 install -m 755 "$src/bricq" /usr/local/bin/bricq
