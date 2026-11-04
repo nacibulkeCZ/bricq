@@ -8,7 +8,8 @@ import math
 import os
 import signal
 import sys
-from threading import Lock
+import time
+from threading import Event, Lock, Thread
 
 from flask import Flask, Response, jsonify, request
 
@@ -26,6 +27,7 @@ def create_app(leg_name, bus):
     ]
     positions = {entry['channel']: None for entry in panel}
     lock = Lock()
+    walk = {'thread': None, 'stop': None}
 
     app = Flask(__name__)
     app.config['MAX_CONTENT_LENGTH'] = 2048
@@ -34,10 +36,16 @@ def create_app(leg_name, bus):
     app.config['LEGTEST_PANEL'] = panel
     app.config['LEGTEST_POSITIONS'] = positions
     app.config['LEGTEST_LOCK'] = lock
+    app.config['LEGTEST_WALK'] = walk
+
+    def is_walking():
+        thread = walk['thread']
+        return thread is not None and thread.is_alive()
 
     def snapshot():
         return {
             'leg': leg_name,
+            'walking': is_walking(),
             'servos': [
                 {'channel': entry['channel'],
                  'name': entry['name'],
@@ -45,6 +53,27 @@ def create_app(leg_name, bus):
                 for entry in panel
             ],
         }
+
+    def walker(stop_event):
+        knee_ch = channels['knee']
+        thigh_ch = channels['thigh']
+        period = 1.6
+        dt = 0.05
+        start = time.monotonic()
+        while not stop_event.is_set():
+            phase = 2 * math.pi * ((time.monotonic() - start) % period) / period
+            thigh_angle = int(round(30 * math.sin(phase)))
+            knee_angle = int(round(35 * max(0.0, math.cos(phase))))
+            try:
+                with lock:
+                    bus.set_angle(thigh_ch, thigh_angle)
+                    positions[thigh_ch] = thigh_angle
+                    bus.set_angle(knee_ch, knee_angle)
+                    positions[knee_ch] = knee_angle
+            except Exception as error:
+                print('legtest walk error:', error, file=sys.stderr, flush=True)
+                break
+            stop_event.wait(dt)
 
     @app.errorhandler(ValueError)
     def _invalid(error):
@@ -58,6 +87,8 @@ def create_app(leg_name, bus):
     @app.post('/move')
     @app.post('/centre')
     def _move():
+        if is_walking():
+            raise ValueError('Walk test is running — stop it first.')
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
             raise ValueError('Expected a JSON object.')
@@ -74,6 +105,26 @@ def create_app(leg_name, bus):
         with lock:
             bus.set_angle(channel, angle)
             positions[channel] = angle
+            return jsonify(snapshot())
+
+    @app.post('/walk/start')
+    def _walk_start():
+        with lock:
+            if not is_walking():
+                walk['stop'] = Event()
+                walk['thread'] = Thread(
+                    target=walker, args=(walk['stop'],), daemon=True)
+                walk['thread'].start()
+        return jsonify(snapshot())
+
+    @app.post('/walk/stop')
+    def _walk_stop():
+        thread = walk['thread']
+        stop = walk['stop']
+        if thread is not None and stop is not None:
+            stop.set()
+            thread.join(timeout=2)
+        with lock:
             return jsonify(snapshot())
 
     @app.get('/health')
@@ -96,6 +147,12 @@ def release_all(app):
     bus = app.config['LEGTEST_BUS']
     positions = app.config['LEGTEST_POSITIONS']
     lock = app.config['LEGTEST_LOCK']
+    walk = app.config['LEGTEST_WALK']
+    thread = walk['thread']
+    stop = walk['stop']
+    if thread is not None and stop is not None:
+        stop.set()
+        thread.join(timeout=2)
     with lock:
         for channel in positions:
             bus.release(channel)
@@ -120,25 +177,51 @@ _PAGE = r'''<!doctype html>
 <h1>Leg test · __LEG__</h1>
 <p>Direct servo angles. 0° is the servo centre. Sliders commit on release.</p>
 <p id="status" role="status">Connecting…</p>
+<section id="walk-panel"><h2>Walk test</h2>
+<p>Cycles the knee and thigh through a repeating gait. Manual sliders are locked while it runs.</p>
+<button id="walk-btn" type="button" disabled>Start walk test</button></section>
 <main id="servos"></main>
 <script>
 const panel=__PANEL__;
 const channels=__CHANNELS__;
 const status=document.getElementById('status');
+const walkBtn=document.getElementById('walk-btn');
 let busy=false;
+let walking=false;
+let pollId=null;
+function setControlsDisabled(disabled){
+  for(const el of document.querySelectorAll('#servos input,#servos button')){
+    el.disabled=disabled;
+  }
+}
 function show(data){
+  walking=!!data.walking;
+  walkBtn.textContent=walking?'Stop walk test':'Start walk test';
+  walkBtn.disabled=false;
+  setControlsDisabled(walking);
   for(const servo of data.servos){
     const a=servo.angle;
     document.getElementById('slider'+servo.channel).value=a===null?0:a;
     document.getElementById('value'+servo.channel).textContent=a===null?'Released':`${a>0?'+':''}${a}°`;
   }
+  if(walking&&pollId===null){
+    pollId=setInterval(pollState,200);
+  }else if(!walking&&pollId!==null){
+    clearInterval(pollId);pollId=null;
+  }
+}
+async function pollState(){
+  try{
+    const response=await fetch('/state',{cache:'no-store'});
+    if(response.ok)show(await response.json());
+  }catch(_){/* keep polling */}
 }
 function preview(ch){
   const a=Number(document.getElementById('slider'+ch).value);
   document.getElementById('value'+ch).textContent=`${a>0?'+':''}${a}° (preview)`;
 }
 async function command(ch,centre=false){
-  if(busy)return;
+  if(busy||walking)return;
   busy=true;
   const controls=document.querySelectorAll('input,button');
   controls.forEach(el=>el.disabled=true);
@@ -155,6 +238,21 @@ async function command(ch,centre=false){
     status.textContent='Command not confirmed. '+error.message;
   }finally{controls.forEach(el=>el.disabled=false);busy=false;}
 }
+async function toggleWalk(){
+  walkBtn.disabled=true;
+  const target=walking?'/walk/stop':'/walk/start';
+  try{
+    const response=await fetch(target,{method:'POST'});
+    const data=await response.json();
+    if(!response.ok)throw Error(data.error||'Walk toggle failed');
+    show(data);
+    status.textContent=walking?'Walking…':'Ready.';
+  }catch(error){
+    status.textContent='Walk toggle failed. '+error.message;
+    walkBtn.disabled=false;
+  }
+}
+walkBtn.addEventListener('click',toggleWalk);
 (async()=>{
   try{
     for(const entry of panel){
@@ -172,7 +270,7 @@ async function command(ch,centre=false){
     const response=await fetch('/state',{cache:'no-store'});
     if(!response.ok)throw Error('Could not load servo state');
     show(await response.json());
-    status.textContent='Ready. Servos move when you use a control.';
+    status.textContent=walking?'Walking…':'Ready. Servos move when you use a control.';
   }catch(error){status.textContent=error.message;}
 })();
 </script>
