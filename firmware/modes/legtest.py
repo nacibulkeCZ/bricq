@@ -27,7 +27,8 @@ def create_app(leg_name, bus):
     ]
     positions = {entry['channel']: None for entry in panel}
     lock = Lock()
-    walk = {'thread': None, 'stop': None}
+    walk = {'thread': None, 'stop': None, 'stride': 50}
+    STRIDE_RANGE = (5, 80)
 
     app = Flask(__name__)
     app.config['MAX_CONTENT_LENGTH'] = 2048
@@ -46,6 +47,8 @@ def create_app(leg_name, bus):
         return {
             'leg': leg_name,
             'walking': is_walking(),
+            'stride': walk['stride'],
+            'stride_range': list(STRIDE_RANGE),
             'servos': [
                 {'channel': entry['channel'],
                  'name': entry['name'],
@@ -53,6 +56,16 @@ def create_app(leg_name, bus):
                 for entry in panel
             ],
         }
+
+    def parse_stride(value):
+        if (isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)):
+            raise ValueError('Stride must be a number of degrees.')
+        lo, hi = STRIDE_RANGE
+        if not lo <= value <= hi:
+            raise ValueError('Stride must be between %d and %d degrees.' % (lo, hi))
+        return int(round(value))
 
     def walker(stop_event):
         knee_ch = channels['knee']
@@ -62,8 +75,9 @@ def create_app(leg_name, bus):
         start = time.monotonic()
         while not stop_event.is_set():
             phase = 2 * math.pi * ((time.monotonic() - start) % period) / period
-            thigh_angle = int(round(30 * math.sin(phase)))
-            knee_angle = int(round(35 * max(0.0, math.cos(phase))))
+            stride = walk['stride']
+            thigh_angle = int(round(stride * math.sin(phase)))
+            knee_angle = int(round(stride * max(0.0, math.cos(phase))))
             try:
                 with lock:
                     bus.set_angle(thigh_ch, thigh_angle)
@@ -109,6 +123,9 @@ def create_app(leg_name, bus):
 
     @app.post('/walk/start')
     def _walk_start():
+        data = request.get_json(silent=True) or {}
+        if 'stride' in data:
+            walk['stride'] = parse_stride(data['stride'])
         with lock:
             if not is_walking():
                 walk['stop'] = Event()
@@ -124,6 +141,15 @@ def create_app(leg_name, bus):
         if thread is not None and stop is not None:
             stop.set()
             thread.join(timeout=2)
+        with lock:
+            return jsonify(snapshot())
+
+    @app.post('/walk/stride')
+    def _walk_stride():
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or 'stride' not in data:
+            raise ValueError('Expected a JSON object with a "stride" field.')
+        walk['stride'] = parse_stride(data['stride'])
         with lock:
             return jsonify(snapshot())
 
@@ -179,6 +205,9 @@ _PAGE = r'''<!doctype html>
 <p id="status" role="status">Connecting…</p>
 <section id="walk-panel"><h2>Walk test</h2>
 <p>Cycles the knee and thigh through a repeating gait. Manual sliders are locked while it runs.</p>
+<output id="stride-value" for="stride-slider">Step size: 50°</output>
+<input id="stride-slider" aria-label="Walk step size in degrees" type="range" min="5" max="80" step="1" value="50">
+<div class="ends"><span>5°</span><span>small ↔ big</span><span>80°</span></div>
 <button id="walk-btn" type="button" disabled>Start walk test</button></section>
 <main id="servos"></main>
 <script>
@@ -186,9 +215,12 @@ const panel=__PANEL__;
 const channels=__CHANNELS__;
 const status=document.getElementById('status');
 const walkBtn=document.getElementById('walk-btn');
+const strideSlider=document.getElementById('stride-slider');
+const strideValue=document.getElementById('stride-value');
 let busy=false;
 let walking=false;
 let pollId=null;
+let strideSending=false;
 function setControlsDisabled(disabled){
   for(const el of document.querySelectorAll('#servos input,#servos button')){
     el.disabled=disabled;
@@ -199,6 +231,10 @@ function show(data){
   walkBtn.textContent=walking?'Stop walk test':'Start walk test';
   walkBtn.disabled=false;
   setControlsDisabled(walking);
+  if(typeof data.stride==='number'&&document.activeElement!==strideSlider&&!strideSending){
+    strideSlider.value=data.stride;
+    strideValue.textContent=`Step size: ${data.stride}°`;
+  }
   for(const servo of data.servos){
     const a=servo.angle;
     document.getElementById('slider'+servo.channel).value=a===null?0:a;
@@ -241,8 +277,13 @@ async function command(ch,centre=false){
 async function toggleWalk(){
   walkBtn.disabled=true;
   const target=walking?'/walk/stop':'/walk/start';
+  const body=walking?null:JSON.stringify({stride:Number(strideSlider.value)});
   try{
-    const response=await fetch(target,{method:'POST'});
+    const response=await fetch(target,{
+      method:'POST',
+      headers:body?{'Content-Type':'application/json'}:{},
+      body
+    });
     const data=await response.json();
     if(!response.ok)throw Error(data.error||'Walk toggle failed');
     show(data);
@@ -252,6 +293,24 @@ async function toggleWalk(){
     walkBtn.disabled=false;
   }
 }
+async function sendStride(){
+  const stride=Number(strideSlider.value);
+  strideSending=true;
+  try{
+    const response=await fetch('/walk/stride',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({stride})
+    });
+    const data=await response.json();
+    if(!response.ok)throw Error(data.error||'Stride update failed');
+  }catch(error){
+    status.textContent='Stride not applied. '+error.message;
+  }finally{strideSending=false;}
+}
+strideSlider.addEventListener('input',()=>{
+  strideValue.textContent=`Step size: ${strideSlider.value}°`;
+});
+strideSlider.addEventListener('change',sendStride);
 walkBtn.addEventListener('click',toggleWalk);
 (async()=>{
   try{
