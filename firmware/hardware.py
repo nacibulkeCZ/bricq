@@ -9,10 +9,10 @@ returns a `FakeServoBus` — safe to run routes without hardware."""
 
 
 LEGS = {
-    'front-left':  {'knee': None, 'thigh': None},
-    'front-right': {'knee': 0, 'thigh': 2},
-    'back-left':   {'knee': None, 'thigh': None},
-    'back-right':  {'knee': None, 'thigh': None},
+    'front-left':  {'knee': 13, 'thigh': 15},
+    'front-right': {'knee': 2,  'thigh': 0},
+    'back-left':   {'knee': 9,  'thigh': 11},
+    'back-right':  {'knee': 6,  'thigh': 4},
 }
 
 ANGLE_RANGE = (-90, 90)
