@@ -76,7 +76,7 @@ def create_app(leg_name, bus):
         while not stop_event.is_set():
             phase = 2 * math.pi * ((time.monotonic() - start) % period) / period
             stride = walk['stride']
-            thigh_angle = int(round(stride * math.sin(phase)))
+            thigh_angle = int(round(-stride * math.sin(phase)))
             knee_angle = int(round(stride * max(0.0, math.cos(phase))))
             try:
                 with lock:
