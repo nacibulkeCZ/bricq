@@ -271,7 +271,7 @@ def serve():
     os.execve(python, [python, '-u', str(release / 'firmware/app.py')], env)
 
 
-def run_mode(mode_name, mode_arg):
+def run_mode(mode_name, mode_arg=None):
     release = current()
     if not release:
         raise RuntimeError('No installed release. Install firmware first.')
@@ -281,7 +281,10 @@ def run_mode(mode_name, mode_arg):
     try:
         python = str(release / 'venv/bin/python')
         script = release / 'firmware' / 'modes' / (mode_name + '.py')
-        completed = subprocess.run([python, '-u', str(script), mode_arg])
+        cmd = [python, '-u', str(script)]
+        if mode_arg is not None:
+            cmd.append(mode_arg)
+        completed = subprocess.run(cmd)
         if completed.returncode != 0:
             raise RuntimeError('%s exited with code %d' % (mode_name, completed.returncode))
     finally:
@@ -292,7 +295,7 @@ def run_mode(mode_name, mode_arg):
 
 def main_with_args(argv):
     parser = argparse.ArgumentParser(description='BRICQ robot console')
-    parser.add_argument('command', choices=['status', 'update', 'rollback', 'watch', 'logs', 'serve', 'install-local', 'legtest'])
+    parser.add_argument('command', choices=['status', 'update', 'rollback', 'watch', 'logs', 'serve', 'install-local', 'legtest', 'stand'])
     parser.add_argument('argument', nargs='?')
     args = parser.parse_args(argv)
     if args.command == 'status':
@@ -318,6 +321,8 @@ def main_with_args(argv):
         if not args.argument:
             parser.error('legtest requires a leg name. Available: front-left, front-right, back-left, back-right')
         run_mode('legtest', args.argument)
+    elif args.command == 'stand':
+        run_mode('stand')
     else:
         if not args.argument:
             parser.error('install-local requires a firmware directory.')
