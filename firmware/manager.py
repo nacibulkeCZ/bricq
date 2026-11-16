@@ -271,16 +271,31 @@ def serve():
     os.execve(python, [python, '-u', str(release / 'firmware/app.py')], env)
 
 
+BUILTIN_COMMANDS = ('status', 'update', 'rollback', 'watch', 'logs', 'serve', 'install-local')
+
+
+def available_modes(release):
+    modes_dir = release / 'firmware' / 'modes'
+    if not modes_dir.is_dir():
+        return []
+    return sorted(path.stem for path in modes_dir.glob('*.py')
+                  if not path.name.startswith('_'))
+
+
 def run_mode(mode_name, mode_arg=None):
     release = current()
     if not release:
         raise RuntimeError('No installed release. Install firmware first.')
+    script = release / 'firmware' / 'modes' / (mode_name + '.py')
+    if not script.is_file():
+        modes = available_modes(release)
+        hint = ', '.join(modes) if modes else '(none installed)'
+        raise RuntimeError('Unknown command or mode: %s. Available modes: %s' % (mode_name, hint))
     was_active = active()
     if was_active:
         control('stop', 'bricq.service')
     try:
         python = str(release / 'venv/bin/python')
-        script = release / 'firmware' / 'modes' / (mode_name + '.py')
         cmd = [python, '-u', str(script)]
         if mode_arg is not None:
             cmd.append(mode_arg)
@@ -294,8 +309,12 @@ def run_mode(mode_name, mode_arg=None):
 
 
 def main_with_args(argv):
-    parser = argparse.ArgumentParser(description='BRICQ robot console')
-    parser.add_argument('command', choices=['status', 'update', 'rollback', 'watch', 'logs', 'serve', 'install-local', 'legtest', 'stand'])
+    parser = argparse.ArgumentParser(
+        description='BRICQ robot console',
+        epilog='Any command outside the built-in set is dispatched as a mode: '
+               'bricq <name> runs firmware/modes/<name>.py in the current release.')
+    parser.add_argument('command',
+                        help='Built-in: ' + ', '.join(BUILTIN_COMMANDS) + '; or any installed mode name.')
     parser.add_argument('argument', nargs='?')
     args = parser.parse_args(argv)
     if args.command == 'status':
@@ -317,16 +336,14 @@ def main_with_args(argv):
         run('sudo', '-n', shutil.which('journalctl') or '/usr/bin/journalctl', '-u', 'bricq.service', '-n', '80', '--no-pager')
     elif args.command == 'serve':
         serve()
-    elif args.command == 'legtest':
-        if not args.argument:
-            parser.error('legtest requires a leg name. Available: front-left, front-right, back-left, back-right')
-        run_mode('legtest', args.argument)
-    elif args.command == 'stand':
-        run_mode('stand')
-    else:
+    elif args.command == 'install-local':
         if not args.argument:
             parser.error('install-local requires a firmware directory.')
         install_local(args.argument)
+    else:
+        # Mode discovery: any script in firmware/modes/ becomes a bricq subcommand.
+        # Adding a new mode no longer requires updating this CLI.
+        run_mode(args.command, args.argument)
 
 
 def main():

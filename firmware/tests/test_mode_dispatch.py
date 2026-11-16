@@ -1,5 +1,7 @@
 """Tests for the mode dispatch in manager.run_mode:
-stop status app → exec mode script → always restart status app on exit."""
+stop status app → exec mode script → always restart status app on exit.
+Also verifies that any script in modes/ becomes a bricq subcommand via
+discovery, so new modes drop in without CLI changes."""
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,6 +15,8 @@ import manager
 def installed_release(tmp_root, monkeypatch):
     release = tmp_root / 'releases' / 'release-test'
     (release / 'firmware' / 'modes').mkdir(parents=True)
+    (release / 'firmware' / 'modes' / 'legtest.py').write_text('')
+    (release / 'firmware' / 'modes' / 'stand.py').write_text('')
     (release / 'venv' / 'bin').mkdir(parents=True)
     (release / 'venv' / 'bin' / 'python').write_text('#!/usr/bin/env python3\n')
     monkeypatch.setattr(manager, 'current', lambda name='current': release if name == 'current' else None)
@@ -88,9 +92,14 @@ def test_run_mode_errors_without_installed_release(fake_system, monkeypatch, tmp
         manager.run_mode('legtest', 'front-right')
 
 
-def test_legtest_cli_requires_leg_name():
-    with pytest.raises(SystemExit):
-        manager.main_with_args(['legtest'])
+def test_run_mode_rejects_unknown_mode_with_available_list(installed_release, fake_system):
+    with pytest.raises(RuntimeError, match='Unknown command or mode: wobble'):
+        manager.run_mode('wobble')
+
+
+def test_run_mode_unknown_error_lists_installed_modes(installed_release, fake_system):
+    with pytest.raises(RuntimeError, match='legtest, stand'):
+        manager.run_mode('wobble')
 
 
 def test_legtest_cli_dispatches_to_run_mode(monkeypatch):
@@ -98,3 +107,29 @@ def test_legtest_cli_dispatches_to_run_mode(monkeypatch):
     monkeypatch.setattr(manager, 'run_mode', lambda name, arg: called.append((name, arg)))
     manager.main_with_args(['legtest', 'front-right'])
     assert called == [('legtest', 'front-right')]
+
+
+def test_cli_dispatches_arbitrary_mode_name_through_run_mode(monkeypatch):
+    """New modes drop in without touching the CLI argparse layer."""
+    called = []
+    monkeypatch.setattr(manager, 'run_mode', lambda name, arg: called.append((name, arg)))
+    manager.main_with_args(['stand'])
+    manager.main_with_args(['brand-new-mode', 'with-arg'])
+    assert called == [('stand', None), ('brand-new-mode', 'with-arg')]
+
+
+def test_cli_still_routes_builtins_without_calling_run_mode(monkeypatch):
+    """Built-ins (status/update/install-local/...) must not fall through to run_mode."""
+    monkeypatch.setattr(manager, 'run_mode', lambda *_: pytest.fail('builtin must not dispatch as mode'))
+    monkeypatch.setattr(manager, 'status', lambda: None)
+    manager.main_with_args(['status'])
+
+
+def test_available_modes_lists_mode_scripts(installed_release):
+    modes = manager.available_modes(installed_release)
+    assert modes == ['legtest', 'stand']
+
+
+def test_available_modes_skips_dunder_files(installed_release):
+    (installed_release / 'firmware' / 'modes' / '__init__.py').write_text('')
+    assert '__init__' not in manager.available_modes(installed_release)
