@@ -148,8 +148,11 @@ def create_app(bus):
 
     @app.post('/stand')
     def _stand():
-        if is_walking():
-            raise ValueError('Walk test is running — stop it first.')
+        thread = walk['thread']
+        stop = walk['stop']
+        if thread is not None and stop is not None:
+            stop.set()
+            thread.join(timeout=2)
         with lock:
             hold_stand_pose()
             return jsonify(snapshot())

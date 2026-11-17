@@ -95,11 +95,14 @@ def test_walk_stop_returns_to_stand_pose(client, bus):
     assert bus.positions[2] == hardware.STAND_POSE['knee']
 
 
-def test_stand_endpoint_rejects_during_walk(client):
+def test_stand_endpoint_stops_walker_and_holds_pose(client, bus):
     client.post('/walk/start', json={'stride': 10})
     response = client.post('/stand')
-    assert response.status_code == 400
-    client.post('/walk/stop')
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body['walking'] is False
+    assert bus.positions[0] == hardware.STAND_POSE['thigh']
+    assert bus.positions[2] == hardware.STAND_POSE['knee']
 
 
 def test_stride_change_outside_range_rejected(client):
