@@ -31,6 +31,12 @@ PERIOD_SECONDS = 1.6
 STEP_DT = 0.05
 STRIDE_RANGE = (5, 25)
 
+# Engage one leg (thigh + knee = 2 servos) at a time so 8 simultaneous current
+# spikes don't brown out the PSU. Order matches gait pairs: one diagonal first,
+# then the other.
+LEG_ENGAGE_ORDER = ('front-left', 'back-right', 'front-right', 'back-left')
+LEG_ENGAGE_DELAY = 0.15
+
 
 def clamp(angle):
     lo, hi = hardware.ANGLE_RANGE
@@ -100,14 +106,35 @@ def create_app(bus):
             positions[channels['thigh']] = thigh
             positions[channels['knee']] = knee
 
-    def hold_stand_pose():
+    def engage_pose_staged(thigh_angles, knee_angles, delay=LEG_ENGAGE_DELAY):
+        """Bring the legs up one at a time so a weak PSU doesn't brown out
+        under 8 simultaneous inrush spikes."""
+        for name in LEG_ENGAGE_ORDER:
+            channels = legs[name]
+            thigh = int(round(thigh_angles[name]))
+            knee = int(round(knee_angles[name]))
+            bus.set_angle(channels['thigh'], thigh)
+            bus.set_angle(channels['knee'], knee)
+            positions[channels['thigh']] = thigh
+            positions[channels['knee']] = knee
+            if delay > 0:
+                time.sleep(delay)
+
+    def stand_pose_commands():
         thighs = {}
         knees = {}
         for name in legs:
             sign = hardware.LEG_SIGNS[name]
             thighs[name] = clamp(sign * hardware.STAND_POSE['thigh'])
             knees[name] = clamp(sign * hardware.STAND_POSE['knee'])
-        write_pose(thighs, knees)
+        return thighs, knees
+
+    def hold_stand_pose(staged=False):
+        thighs, knees = stand_pose_commands()
+        if staged:
+            engage_pose_staged(thighs, knees)
+        else:
+            write_pose(thighs, knees)
 
     def parse_stride(value):
         lo, hi = STRIDE_RANGE
@@ -154,7 +181,7 @@ def create_app(bus):
             stop.set()
             thread.join(timeout=2)
         with lock:
-            hold_stand_pose()
+            hold_stand_pose(staged=True)
             return jsonify(snapshot())
 
     @app.post('/walk/start')
@@ -178,7 +205,7 @@ def create_app(bus):
             stop.set()
             thread.join(timeout=2)
         with lock:
-            hold_stand_pose()
+            hold_stand_pose(staged=True)
             return jsonify(snapshot())
 
     @app.post('/walk/stride')
@@ -214,8 +241,9 @@ def create_app(bus):
         return Response(_PAGE, mimetype='text/html')
 
     # Start up already standing so the operator doesn't see floppy legs.
+    # Staged so the full 8-servo inrush doesn't brown out a weak PSU.
     with lock:
-        hold_stand_pose()
+        hold_stand_pose(staged=True)
 
     return app
 
