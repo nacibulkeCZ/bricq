@@ -18,19 +18,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import hardware  # noqa: E402
 
 
-# Left side servos face the opposite direction from the right, so the same
-# commanded body angle needs an inverted servo command on the left.
-LEG_SIGNS = {
-    'front-left':  -1,
-    'back-left':   -1,
-    'front-right': +1,
-    'back-right':  +1,
-}
-
-
 def create_app(bus):
-    legs = {name: hardware.resolve_leg(name) for name in LEG_SIGNS}
-    pose = {'thigh': 0, 'knee': 0}
+    legs = {name: hardware.resolve_leg(name) for name in hardware.LEG_SIGNS}
+    pose = dict(hardware.STAND_POSE)
     lock = Lock()
 
     app = Flask(__name__)
@@ -45,7 +35,7 @@ def create_app(bus):
             'pose': dict(pose),
             'legs': [
                 {'leg': name,
-                 'sign': LEG_SIGNS[name],
+                 'sign': hardware.LEG_SIGNS[name],
                  'thigh_channel': channels['thigh'],
                  'knee_channel': channels['knee']}
                 for name, channels in legs.items()
@@ -54,7 +44,7 @@ def create_app(bus):
 
     def apply_pose():
         for name, channels in legs.items():
-            sign = LEG_SIGNS[name]
+            sign = hardware.LEG_SIGNS[name]
             bus.set_angle(channels['thigh'], sign * pose['thigh'])
             bus.set_angle(channels['knee'], sign * pose['knee'])
 

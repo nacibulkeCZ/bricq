@@ -20,7 +20,7 @@ def test_state_lists_all_four_legs_with_signs(client):
     response = client.get('/state')
     assert response.status_code == 200
     body = response.get_json()
-    assert body['pose'] == {'thigh': 0, 'knee': 0}
+    assert body['pose'] == hardware.STAND_POSE
     by_name = {entry['leg']: entry for entry in body['legs']}
     assert set(by_name) == {'front-left', 'front-right', 'back-left', 'back-right'}
     assert by_name['front-right']['sign'] == 1
@@ -29,6 +29,17 @@ def test_state_lists_all_four_legs_with_signs(client):
     assert by_name['back-left']['sign'] == -1
     assert by_name['back-left']['knee_channel'] == 9
     assert by_name['back-left']['thigh_channel'] == 11
+
+
+def test_stand_pose_constant_present_and_in_range(client):
+    thigh, knee = hardware.STAND_POSE['thigh'], hardware.STAND_POSE['knee']
+    lo, hi = hardware.ANGLE_RANGE
+    assert lo <= thigh <= hi
+    assert lo <= knee <= hi
+
+
+def test_leg_signs_cover_every_leg(client):
+    assert set(hardware.LEG_SIGNS) == set(hardware.LEGS)
 
 
 def test_pose_applies_to_all_eight_servos_with_sign_flip(client, bus):

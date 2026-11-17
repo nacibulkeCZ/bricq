@@ -15,6 +15,19 @@ LEGS = {
     'back-right':  {'knee': 6,  'thigh': 4},
 }
 
+# Left-side servos face the opposite direction from the right, so the same
+# commanded body angle needs an inverted servo command on the left.
+LEG_SIGNS = {
+    'front-left':  -1,
+    'back-left':   -1,
+    'front-right': +1,
+    'back-right':  +1,
+}
+
+# Whole-body crouch that holds the robot stably on four feet. Tuned live in
+# `bricq stand`. Walk-style modes should oscillate around this pose, not zero.
+STAND_POSE = {'thigh': 62, 'knee': 60}
+
 ANGLE_RANGE = (-90, 90)
 PULSE_WIDTH_RANGE = (500, 2500)
 
