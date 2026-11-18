@@ -28,6 +28,12 @@ LEG_SIGNS = {
 # `bricq stand`. Walk-style modes should oscillate around this pose, not zero.
 STAND_POSE = {'thigh': 62, 'knee': 60}
 
+# Per-channel calibration offset in degrees, applied inside ServoBus.set_angle.
+# Compensates for however the servo horn landed when you screwed it in: a
+# commanded 0° reaches the same physical joint position across all 8 servos.
+# Tune live in `bricq calibrate`.
+SERVO_TRIMS = {0: 0, 2: 0, 4: 0, 6: 0, 9: 0, 11: 0, 13: 0, 15: 0}
+
 ANGLE_RANGE = (-90, 90)
 PULSE_WIDTH_RANGE = (500, 2500)
 
@@ -40,14 +46,21 @@ class ServoBus:
         raise NotImplementedError
 
 
+def _trimmed(channel, angle):
+    """Apply per-channel trim and clamp to the servo's commandable range."""
+    lo, hi = ANGLE_RANGE
+    return max(lo, min(hi, angle + SERVO_TRIMS.get(channel, 0)))
+
+
 class FakeServoBus(ServoBus):
     def __init__(self):
         self.calls = []
         self.positions = {}
 
     def set_angle(self, channel, angle):
-        self.calls.append(('set', channel, angle))
-        self.positions[channel] = angle
+        trimmed = _trimmed(channel, angle)
+        self.calls.append(('set', channel, trimmed))
+        self.positions[channel] = trimmed
 
     def release(self, channel):
         self.calls.append(('release', channel))
@@ -65,7 +78,7 @@ try:
                 self._kit.servo[channel].angle = None
 
         def set_angle(self, channel, angle):
-            self._kit.servo[channel].angle = 90 + angle
+            self._kit.servo[channel].angle = 90 + _trimmed(channel, angle)
 
         def release(self, channel):
             self._kit.servo[channel].angle = None
